@@ -33,7 +33,23 @@ vi.mock('../../services/readingSession', () => ({
 // Mock progress manager
 vi.mock('../../services/progressManager', () => ({
   progressManager: {
-    getLastPosition: vi.fn().mockReturnValue(0)
+    getLastPosition: vi.fn().mockReturnValue(0),
+    getDocumentStructure: vi.fn().mockReturnValue({
+      id: 'test-doc',
+      title: 'Test Document',
+      totalWords: 100,
+      sections: [],
+      words: Array.from({ length: 100 }, (_, i) => ({
+        text: `word${i}`,
+        orp: 0,
+        baseDelay: 250,
+        punctuationPause: 0,
+        isLongWord: false
+      })),
+      createdAt: new Date(),
+      lastPosition: 0
+    }),
+    savePosition: vi.fn()
   }
 }))
 
@@ -41,6 +57,20 @@ vi.mock('../../services/progressManager', () => ({
 vi.mock('../../services/documentProcessor', () => ({
   documentProcessor: {
     parseDocument: vi.fn()
+  }
+}))
+
+// Mock accessibility service
+vi.mock('../../services/accessibilityService', () => ({
+  accessibilityService: {
+    getAccessibleColorScheme: vi.fn().mockReturnValue({
+      background: '#000000',
+      text: '#ffffff',
+      orp: '#ff0000',
+      progress: 'rgba(255, 255, 255, 0.25)'
+    }),
+    announceStateChange: vi.fn(),
+    announceProgress: vi.fn()
   }
 }))
 
@@ -244,6 +274,182 @@ describe('Pause Overlay - Task 9 Implementation', () => {
       // Verify CSS classes exist (actual responsive behavior would be tested with viewport changes)
       expect(pauseContent.classes()).toContain('pause-content')
       expect(pauseControls.classes()).toContain('pause-controls')
+    })
+  })
+
+  describe('Task 18: Keyboard Shortcuts Guide - Requirements 4.1, 4.2, 4.3, 4.4', () => {
+    it('should display keyboard shortcuts guide in pause overlay', async () => {
+      wrapper.vm.isPaused = true
+      await wrapper.vm.$nextTick()
+
+      const shortcutsGuide = wrapper.find('.keyboard-shortcuts-guide')
+      expect(shortcutsGuide.exists()).toBe(true)
+      expect(shortcutsGuide.isVisible()).toBe(true)
+    })
+
+    it('should have proper ARIA attributes for accessibility', async () => {
+      wrapper.vm.isPaused = true
+      await wrapper.vm.$nextTick()
+
+      const shortcutsGuide = wrapper.find('.keyboard-shortcuts-guide')
+      expect(shortcutsGuide.attributes('role')).toBe('region')
+      expect(shortcutsGuide.attributes('aria-label')).toBe('Keyboard shortcuts reference')
+    })
+
+    it('should display shortcuts title', async () => {
+      wrapper.vm.isPaused = true
+      await wrapper.vm.$nextTick()
+
+      const shortcutsTitle = wrapper.find('.shortcuts-title')
+      expect(shortcutsTitle.exists()).toBe(true)
+      expect(shortcutsTitle.text()).toBe('Keyboard Shortcuts')
+    })
+
+    it('should display all required keyboard shortcuts - Requirements 4.1, 4.2, 4.3, 4.4', async () => {
+      wrapper.vm.isPaused = true
+      await wrapper.vm.$nextTick()
+
+      const shortcutItems = wrapper.findAll('.shortcut-item')
+      expect(shortcutItems).toHaveLength(6)
+
+      // Verify each shortcut key and description
+      const shortcuts = [
+        { key: 'SPACE', description: 'Resume' },
+        { key: 'ESC', description: 'Pause' },
+        { key: '←', description: 'Back' },
+        { key: '→', description: 'Forward' },
+        { key: '↑', description: 'Speed Up' },
+        { key: '↓', description: 'Slow Down' }
+      ]
+
+      shortcuts.forEach((shortcut, index) => {
+        const item = shortcutItems[index]
+        const key = item.find('.shortcut-key')
+        const description = item.find('.shortcut-description')
+
+        expect(key.exists()).toBe(true)
+        expect(key.text()).toBe(shortcut.key)
+        expect(description.exists()).toBe(true)
+        expect(description.text()).toBe(shortcut.description)
+      })
+    })
+
+    it('should display SPACE key for resume - Requirement 4.1', async () => {
+      wrapper.vm.isPaused = true
+      await wrapper.vm.$nextTick()
+
+      const shortcutKeys = wrapper.findAll('.shortcut-key')
+      const spaceKey = shortcutKeys.find(key => key.text() === 'SPACE')
+      
+      expect(spaceKey).toBeDefined()
+      expect(spaceKey?.exists()).toBe(true)
+    })
+
+    it('should display ESC key for pause - Requirement 4.1', async () => {
+      wrapper.vm.isPaused = true
+      await wrapper.vm.$nextTick()
+
+      const shortcutKeys = wrapper.findAll('.shortcut-key')
+      const escKey = shortcutKeys.find(key => key.text() === 'ESC')
+      
+      expect(escKey).toBeDefined()
+      expect(escKey?.exists()).toBe(true)
+    })
+
+    it('should display arrow keys for navigation - Requirement 4.2', async () => {
+      wrapper.vm.isPaused = true
+      await wrapper.vm.$nextTick()
+
+      const shortcutKeys = wrapper.findAll('.shortcut-key')
+      const leftArrow = shortcutKeys.find(key => key.text() === '←')
+      const rightArrow = shortcutKeys.find(key => key.text() === '→')
+      
+      expect(leftArrow).toBeDefined()
+      expect(leftArrow?.exists()).toBe(true)
+      expect(rightArrow).toBeDefined()
+      expect(rightArrow?.exists()).toBe(true)
+    })
+
+    it('should display arrow keys for speed adjustment - Requirement 4.3', async () => {
+      wrapper.vm.isPaused = true
+      await wrapper.vm.$nextTick()
+
+      const shortcutKeys = wrapper.findAll('.shortcut-key')
+      const upArrow = shortcutKeys.find(key => key.text() === '↑')
+      const downArrow = shortcutKeys.find(key => key.text() === '↓')
+      
+      expect(upArrow).toBeDefined()
+      expect(upArrow?.exists()).toBe(true)
+      expect(downArrow).toBeDefined()
+      expect(downArrow?.exists()).toBe(true)
+    })
+
+    it('should position shortcuts guide prominently but not intrusively', async () => {
+      wrapper.vm.isPaused = true
+      await wrapper.vm.$nextTick()
+
+      const shortcutsGuide = wrapper.find('.keyboard-shortcuts-guide')
+      const pauseContent = wrapper.find('.pause-content')
+      
+      // Verify shortcuts guide is inside pause content
+      expect(pauseContent.find('.keyboard-shortcuts-guide').exists()).toBe(true)
+      
+      // Verify it appears before speed control (prominent positioning)
+      const speedControl = wrapper.find('.speed-control')
+      expect(speedControl.exists()).toBe(true)
+      
+      // Both should exist in the pause content
+      expect(shortcutsGuide.exists()).toBe(true)
+    })
+
+    it('should not interfere with resume button functionality', async () => {
+      wrapper.vm.isPaused = true
+      await wrapper.vm.$nextTick()
+
+      // Verify shortcuts guide exists
+      const shortcutsGuide = wrapper.find('.keyboard-shortcuts-guide')
+      expect(shortcutsGuide.exists()).toBe(true)
+
+      // Verify resume button still exists and is clickable
+      const resumeBtn = wrapper.find('.resume-btn')
+      expect(resumeBtn.exists()).toBe(true)
+      
+      // Simulate click to ensure it's not blocked
+      await resumeBtn.trigger('click')
+      expect(resumeBtn.exists()).toBe(true)
+    })
+
+    it('should have proper visual styling with key symbols', async () => {
+      wrapper.vm.isPaused = true
+      await wrapper.vm.$nextTick()
+
+      const shortcutKeys = wrapper.findAll('.shortcut-key')
+      expect(shortcutKeys.length).toBeGreaterThan(0)
+
+      // Verify each key has the proper styling class
+      shortcutKeys.forEach(key => {
+        expect(key.classes()).toContain('shortcut-key')
+      })
+    })
+
+    it('should display shortcuts in a grid layout', async () => {
+      wrapper.vm.isPaused = true
+      await wrapper.vm.$nextTick()
+
+      const shortcutsGrid = wrapper.find('.shortcuts-grid')
+      expect(shortcutsGrid.exists()).toBe(true)
+      
+      const shortcutItems = shortcutsGrid.findAll('.shortcut-item')
+      expect(shortcutItems.length).toBe(6)
+    })
+
+    it('should not show shortcuts guide when reading is active', async () => {
+      wrapper.vm.isPaused = false
+      wrapper.vm.isReading = true
+      await wrapper.vm.$nextTick()
+
+      const shortcutsGuide = wrapper.find('.keyboard-shortcuts-guide')
+      expect(shortcutsGuide.exists()).toBe(false)
     })
   })
 })

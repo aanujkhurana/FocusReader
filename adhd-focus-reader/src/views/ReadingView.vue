@@ -16,8 +16,48 @@
       Reading is paused. Press spacebar to resume, use controls below, or press F1 for help.
     </div>
 
+    <!-- Reading Start Overlay - Task 17: Show first word with instructions -->
+    <div 
+      class="start-overlay"
+      v-if="showStartOverlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="start-title"
+    >
+      <div class="start-content">
+        <h2 id="start-title" class="sr-only">Ready to Start Reading</h2>
+        
+        <!-- First word display with ORP highlighting -->
+        <div 
+          class="start-word-display"
+          role="main"
+          aria-label="First reading word"
+          :style="{
+            backgroundColor: accessibilityColors.background,
+            color: accessibilityColors.text
+          }"
+        >
+          <span class="word-text">
+            <span 
+              v-for="(char, index) in currentWordChars" 
+              :key="index"
+              :class="{ 'orp-highlight': index === displayState.orp }"
+              :style="{ color: index === displayState.orp ? accessibilityColors.orp : accessibilityColors.text }"
+            >
+              {{ char }}
+            </span>
+          </span>
+        </div>
+        
+        <!-- Instructions -->
+        <div class="start-instructions">
+          <p class="instruction-text">Press <kbd>SPACE</kbd> to start, <kbd>ESC</kbd> to pause</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Main word display area - Requirement 2.1: Centered word display -->
-    <div class="word-display-container">
+    <div class="word-display-container" v-if="!showStartOverlay">
       <div 
         class="word-display"
         v-if="displayState.isVisible"
@@ -44,7 +84,7 @@
     </div>
 
     <!-- Subtle progress bar at bottom - Requirement: Add subtle progress bar -->
-    <div class="progress-container" v-if="!isPaused">
+    <div class="progress-container" v-if="!isPaused && !showStartOverlay">
       <div 
         class="progress-bar"
         :style="{ 
@@ -70,6 +110,37 @@
       <div class="pause-content">
         <h2 id="pause-title">Reading Paused</h2>
         <p>Press spacebar to continue or use the controls below</p>
+        
+        <!-- Task 18: Keyboard shortcuts guide - Requirements 4.1, 4.2, 4.3, 4.4 -->
+        <div class="keyboard-shortcuts-guide" role="region" aria-label="Keyboard shortcuts reference">
+          <h3 class="shortcuts-title">Keyboard Shortcuts</h3>
+          <div class="shortcuts-grid">
+            <div class="shortcut-item">
+              <kbd class="shortcut-key">SPACE</kbd>
+              <span class="shortcut-description">Resume</span>
+            </div>
+            <div class="shortcut-item">
+              <kbd class="shortcut-key">ESC</kbd>
+              <span class="shortcut-description">Pause</span>
+            </div>
+            <div class="shortcut-item">
+              <kbd class="shortcut-key">←</kbd>
+              <span class="shortcut-description">Back</span>
+            </div>
+            <div class="shortcut-item">
+              <kbd class="shortcut-key">→</kbd>
+              <span class="shortcut-description">Forward</span>
+            </div>
+            <div class="shortcut-item">
+              <kbd class="shortcut-key">↑</kbd>
+              <span class="shortcut-description">Speed Up</span>
+            </div>
+            <div class="shortcut-item">
+              <kbd class="shortcut-key">↓</kbd>
+              <span class="shortcut-description">Slow Down</span>
+            </div>
+          </div>
+        </div>
         
         <!-- Speed adjustment slider - Requirement 4.4 -->
         <div class="speed-control">
@@ -164,6 +235,7 @@ const displayState = ref<DisplayState>({
 
 const isReading = ref(false)
 const isPaused = ref(false)
+const showStartOverlay = ref(true) // Task 17: Show start overlay initially
 const currentSpeed = ref(250) // Current reading speed in WPM
 const readingSession = ref(createReadingSession())
 const accessibilityColors = ref(accessibilityService.getAccessibleColorScheme())
@@ -365,27 +437,19 @@ const startReading = async () => {
     
     // Update display state
     displayState.value.isVisible = true
-    isReading.value = true
+    
+    // Task 17: Show start overlay instead of immediately starting
+    // Display the first word in the overlay
+    showStartOverlay.value = true
+    isReading.value = false // Not reading yet, waiting for user to press space
     
     // Focus the reading container for keyboard events - Requirement 4.5
     await nextTick()
     readingContainer.value?.focus()
     
-    // Start auto reading
-    readingSession.value.getRSVPEngine().startAutoReading()
-    
-    // Announce reading start for accessibility
-    accessibilityService.announceStateChange('started', {
-      totalWords: displayState.value.totalWords
-    })
-    
-    // Setup keyboard navigation with accessibility service
-    // Note: We don't use accessibilityService.setupKeyboardNavigation here
-    // because the KeyboardController already handles all keyboard events
-    // We just need to ensure accessibility announcements work
-    
+    // Don't start auto reading yet - wait for user to press space
     // The keyboard controller is already bound by the reading session
-    // and will handle all keyboard events properly
+    // and will handle the space key press to start reading
     
   } catch (error) {
     console.error('Error starting reading session:', error)
@@ -393,6 +457,22 @@ const startReading = async () => {
     alert(error instanceof Error ? error.message : 'Failed to start reading session')
     router.push('/')
   }
+}
+
+// Task 17: Function to start actual reading from the start overlay
+const startActualReading = () => {
+  if (!showStartOverlay.value) return
+  
+  showStartOverlay.value = false
+  isReading.value = true
+  
+  // Start auto reading
+  readingSession.value.getRSVPEngine().startAutoReading()
+  
+  // Announce reading start for accessibility
+  accessibilityService.announceStateChange('started', {
+    totalWords: displayState.value.totalWords
+  })
 }
 
 // Watch for reading state changes
@@ -423,6 +503,25 @@ watch(() => readingSession.value.getRSVPEngine().isPaused(), async (paused) => {
 // Lifecycle hooks
 onMounted(() => {
   startReading()
+  
+  // Task 17: Add keyboard handling for start overlay
+  const handleStartOverlayKeydown = (event: KeyboardEvent) => {
+    if (showStartOverlay.value) {
+      if (event.key === ' ') {
+        // Space key starts reading from overlay
+        event.preventDefault()
+        event.stopPropagation()
+        startActualReading()
+      } else if (event.key === 'Escape') {
+        // Escape key exits from start overlay
+        event.preventDefault()
+        event.stopPropagation()
+        exitReading()
+      }
+    }
+  }
+  
+  document.addEventListener('keydown', handleStartOverlayKeydown, { capture: true })
   
   // Set up state synchronization polling to ensure UI stays in sync
   const stateSync = setInterval(() => {
@@ -456,6 +555,7 @@ onMounted(() => {
   // Clean up polling and event listeners on unmount
   onUnmounted(() => {
     clearInterval(stateSync)
+    document.removeEventListener('keydown', handleStartOverlayKeydown, { capture: true })
     window.removeEventListener('reading-exit-requested', handleExitRequest)
     window.removeEventListener('reading-help-requested', handleHelpRequest)
   })
@@ -551,6 +651,67 @@ onUnmounted(() => {
   text-shadow: 0 0 1px #ff0000; /* Subtle glow for better visibility */
 }
 
+/* Task 17: Start overlay styles - Reading start overlay with instructions */
+.start-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #000000; /* Same as main reading interface */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10002; /* Above everything else */
+  flex-direction: column;
+}
+
+.start-content {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3rem;
+}
+
+.start-word-display {
+  text-align: center;
+  font-size: 3.5rem; /* Same as main word display */
+  font-weight: 400;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  min-height: 4.5rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0 2rem;
+}
+
+.start-instructions {
+  text-align: center;
+}
+
+.instruction-text {
+  font-size: 1.2rem;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0;
+  font-weight: 300;
+  line-height: 1.4;
+}
+
+.instruction-text kbd {
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 0.2em 0.4em;
+  font-family: monospace;
+  font-size: 0.9em;
+  color: #ffffff;
+  font-weight: 500;
+  margin: 0 0.1em;
+}
+
 /* Subtle progress bar at bottom */
 .progress-container {
   position: fixed;
@@ -606,6 +767,73 @@ onUnmounted(() => {
   margin-bottom: 2rem;
   opacity: 0.8;
   color: #ffffff;
+}
+
+/* Task 18: Keyboard shortcuts guide styles - Requirements 4.1, 4.2, 4.3, 4.4 */
+.keyboard-shortcuts-guide {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.shortcuts-title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0 0 1rem 0;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  max-width: 100%;
+}
+
+.shortcut-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.shortcut-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.shortcut-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  padding: 0.4rem 0.6rem;
+  background-color: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #ffffff;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), inset 0 -2px 0 rgba(0, 0, 0, 0.2);
+}
+
+.shortcut-description {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
+  text-align: center;
+  font-weight: 400;
+  line-height: 1.2;
 }
 
 /* Speed control section - Requirement 4.4: Speed adjustment slider */
@@ -758,6 +986,22 @@ onUnmounted(() => {
     padding: 0 1rem;
   }
   
+  /* Task 17: Start overlay responsive styles */
+  .start-word-display {
+    font-size: 2.5rem;
+    min-height: 3.5rem;
+    padding: 0 1rem;
+  }
+  
+  .instruction-text {
+    font-size: 1.1rem;
+  }
+  
+  .start-content {
+    gap: 2.5rem;
+    padding: 0 1rem;
+  }
+  
   .pause-content {
     padding: 2rem 1.5rem;
     max-width: 90vw;
@@ -765,6 +1009,37 @@ onUnmounted(() => {
   
   .pause-content h2 {
     font-size: 1.5rem;
+  }
+  
+  /* Task 18: Responsive keyboard shortcuts guide */
+  .keyboard-shortcuts-guide {
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .shortcuts-title {
+    font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  .shortcuts-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+  
+  .shortcut-item {
+    padding: 0.4rem;
+  }
+  
+  .shortcut-key {
+    min-width: 2.2rem;
+    height: 2.2rem;
+    font-size: 0.85rem;
+    padding: 0.3rem 0.5rem;
+  }
+  
+  .shortcut-description {
+    font-size: 0.8rem;
   }
   
   .speed-control {
@@ -800,6 +1075,21 @@ onUnmounted(() => {
     min-height: 3rem;
   }
   
+  /* Task 17: Start overlay responsive styles for mobile */
+  .start-word-display {
+    font-size: 2rem;
+    min-height: 3rem;
+  }
+  
+  .instruction-text {
+    font-size: 1rem;
+  }
+  
+  .start-content {
+    gap: 2rem;
+    padding: 0 1rem;
+  }
+  
   .pause-content {
     padding: 1.5rem 1rem;
   }
@@ -810,6 +1100,37 @@ onUnmounted(() => {
   
   .pause-content p {
     font-size: 1rem;
+  }
+  
+  /* Task 18: Mobile keyboard shortcuts guide */
+  .keyboard-shortcuts-guide {
+    padding: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+  
+  .shortcuts-title {
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .shortcuts-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.4rem;
+  }
+  
+  .shortcut-item {
+    padding: 0.3rem;
+  }
+  
+  .shortcut-key {
+    min-width: 2rem;
+    height: 2rem;
+    font-size: 0.8rem;
+    padding: 0.25rem 0.4rem;
+  }
+  
+  .shortcut-description {
+    font-size: 0.75rem;
   }
   
   .speed-control {
