@@ -4,7 +4,7 @@
     <div class="preview-header">
       <h1 class="preview-title">{{ documentTitle }}</h1>
       <p class="preview-subtitle">
-        {{ totalWords }} words • Click any paragraph to start reading from there
+        {{ totalWords }} words • Hover and click any word to start reading from there
       </p>
       <div class="preview-actions">
         <button @click="startFromBeginning" class="start-button primary">
@@ -18,49 +18,32 @@
 
     <!-- Document Content -->
     <div class="preview-content" v-if="documentStructure">
-      <div 
-        v-for="(section, sectionIndex) in documentStructure.sections" 
-        :key="sectionIndex"
-        class="section"
-        :class="{ 
-          'section-heading': section.type === 'heading',
-          'section-bullet': section.type === 'bullet',
-          'section-paragraph': section.type === 'paragraph',
-          'section-normal': section.type === 'normal',
-          'section-selected': selectedSection === sectionIndex
-        }"
-        @click="selectSection(sectionIndex, section)"
-        :data-section-index="sectionIndex"
-        :data-word-start="section.startWordIndex"
-        :data-word-end="section.endWordIndex"
-      >
-        <div class="section-indicator">
-          <span class="section-type-icon">
-            {{ getSectionIcon(section.type) }}
-          </span>
-          <span class="section-info">
-            {{ section.type === 'heading' ? 'Heading' : 
-               section.type === 'bullet' ? 'Bullet Points' : 'Paragraph' }}
-          </span>
-        </div>
-        
-        <div class="section-content">
-          <h3 v-if="section.type === 'heading'" class="section-title">
-            {{ section.title }}
-          </h3>
-          <div class="section-text">
-            {{ getSectionText(section) }}
+      <div class="document-text">
+        <template v-for="(section, sectionIndex) in documentStructure.sections" :key="sectionIndex">
+          <div 
+            :class="{ 
+              'text-section': true,
+              'section-heading': section.type === 'heading',
+              'section-bullet': section.type === 'bullet'
+            }"
+          >
+            <span
+              v-for="(word, wordIndex) in getSectionWords(section)"
+              :key="`${sectionIndex}-${wordIndex}`"
+              :class="{ 
+                'word': true,
+                'word-hoverable': word.text.length > 1,
+                'word-single': word.text.length === 1,
+                'word-line-start': word.isLineStart,
+                'word-selected': selectedWordIndex === word.globalIndex
+              }"
+              :data-word-index="word.globalIndex"
+              @click="selectWord(word.globalIndex, word.text)"
+              @mouseenter="hoveredWordIndex = word.globalIndex"
+              @mouseleave="hoveredWordIndex = null"
+            >{{ word.text }}</span>
           </div>
-          <div class="section-meta">
-            Words {{ section.startWordIndex + 1 }}-{{ section.endWordIndex + 1 }} 
-            ({{ section.endWordIndex - section.startWordIndex + 1 }} words)
-          </div>
-        </div>
-
-        <div class="section-action">
-          <span class="start-here-text">Start here</span>
-          <span class="start-arrow">→</span>
-        </div>
+        </template>
       </div>
     </div>
 
@@ -85,23 +68,18 @@
           <h2>Start Reading From Here?</h2>
         </div>
         <div class="modal-body">
-          <div class="selected-section-preview">
-            <div class="section-highlight">
-              <div class="section-type">
-                {{ getSectionIcon(selectedSectionData?.type || 'normal') }}
-                {{ selectedSectionData?.type === 'heading' ? 'Heading' : 
-                   selectedSectionData?.type === 'bullet' ? 'Bullet Points' : 'Paragraph' }}
+          <div class="selected-word-preview">
+            <div class="word-highlight">
+              <div class="word-context">
+                {{ getWordContext() }}
               </div>
-              <div class="section-preview-text">
-                {{ getSelectedSectionPreview() }}
-              </div>
-              <div class="section-position">
-                Starting at word {{ (selectedSectionData?.startWordIndex || 0) + 1 }} of {{ totalWords }}
+              <div class="word-position">
+                Starting at word {{ selectedWordIndex + 1 }} of {{ totalWords }}
               </div>
             </div>
           </div>
           <p class="confirmation-text">
-            You'll start reading from this section. Your progress will be saved automatically.
+            You'll start reading from "{{ selectedWord }}". Your progress will be saved automatically.
           </p>
         </div>
         <div class="modal-actions">
@@ -133,8 +111,9 @@ const documentId = route.params.documentId as string
 const documentStructure = ref<DocumentStructure | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref('')
-const selectedSection = ref<number | null>(null)
-const selectedSectionData = ref<Section | null>(null)
+const selectedWordIndex = ref<number | null>(null)
+const selectedWord = ref<string>('')
+const hoveredWordIndex = ref<number | null>(null)
 const showConfirmation = ref(false)
 
 // Computed properties
@@ -167,63 +146,69 @@ async function loadDocumentData() {
   }
 }
 
-function getSectionIcon(type: string): string {
-  switch (type) {
-    case 'heading':
-      return '📋'
-    case 'bullet':
-      return '•'
-    case 'paragraph':
-      return '📄'
-    default:
-      return '📄'
-  }
+interface WordWithContext {
+  text: string
+  globalIndex: number
+  isLineStart: boolean
 }
 
-function getSectionText(section: Section): string {
-  if (!documentStructure.value) return ''
+function getSectionWords(section: Section): WordWithContext[] {
+  if (!documentStructure.value) return []
   
-  // Get the words for this section
-  const sectionWords = documentStructure.value.words
+  const words = documentStructure.value.words
     .slice(section.startWordIndex, section.endWordIndex + 1)
-    .map(word => word.text)
-    .join(' ')
+    .map((word, localIndex) => {
+      const globalIndex = section.startWordIndex + localIndex
+      // Mark first word of section as line start
+      const isLineStart = localIndex === 0
+      
+      return {
+        text: word.text,
+        globalIndex,
+        isLineStart
+      }
+    })
   
-  // Truncate if too long for preview
-  if (sectionWords.length > 200) {
-    return sectionWords.substring(0, 200) + '...'
-  }
-  
-  return sectionWords
+  return words
 }
 
-function selectSection(sectionIndex: number, section: Section) {
-  selectedSection.value = sectionIndex
-  selectedSectionData.value = section
+function selectWord(wordIndex: number, word: string) {
+  // Ignore single-letter words
+  if (word.length === 1) {
+    return
+  }
+  
+  selectedWordIndex.value = wordIndex
+  selectedWord.value = word
   showConfirmation.value = true
 }
 
-function getSelectedSectionPreview(): string {
-  if (!selectedSectionData.value || !documentStructure.value) return ''
+function getWordContext(): string {
+  if (!documentStructure.value || selectedWordIndex.value === null) return ''
   
-  const sectionWords = documentStructure.value.words
-    .slice(selectedSectionData.value.startWordIndex, selectedSectionData.value.endWordIndex + 1)
-    .map(word => word.text)
+  // Get 5 words before and 5 words after for context
+  const contextStart = Math.max(0, selectedWordIndex.value - 5)
+  const contextEnd = Math.min(documentStructure.value.words.length - 1, selectedWordIndex.value + 5)
+  
+  const contextWords = documentStructure.value.words
+    .slice(contextStart, contextEnd + 1)
+    .map((word, index) => {
+      const globalIndex = contextStart + index
+      if (globalIndex === selectedWordIndex.value) {
+        return `**${word.text}**`
+      }
+      return word.text
+    })
     .join(' ')
   
-  // Show first 100 characters for confirmation
-  if (sectionWords.length > 100) {
-    return sectionWords.substring(0, 100) + '...'
-  }
-  
-  return sectionWords
+  return contextWords
 }
 
 function confirmSelection() {
-  if (!selectedSectionData.value) return
+  if (selectedWordIndex.value === null) return
   
   // Save the custom starting position
-  progressManager.savePosition(documentId, selectedSectionData.value.startWordIndex)
+  progressManager.savePosition(documentId, selectedWordIndex.value)
   
   // Navigate to setup screen with the custom position
   router.push({
@@ -231,14 +216,14 @@ function confirmSelection() {
     params: { documentId },
     query: { 
       customStart: 'true',
-      startPosition: selectedSectionData.value.startWordIndex.toString()
+      startPosition: selectedWordIndex.value.toString()
     }
   })
 }
 
 function cancelSelection() {
-  selectedSection.value = null
-  selectedSectionData.value = null
+  selectedWordIndex.value = null
+  selectedWord.value = ''
   showConfirmation.value = false
 }
 
@@ -326,109 +311,64 @@ function goBack() {
 /* Content */
 .preview-content {
   padding: 0 2rem 2rem;
-  max-width: 800px;
+  max-width: 900px;
   margin: 0 auto;
 }
 
-.section {
-  background: #111;
-  border: 2px solid #333;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  overflow: hidden;
+.document-text {
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: #ddd;
 }
 
-.section:hover {
-  border-color: #555;
-  background: #1a1a1a;
-}
-
-.section-selected {
-  border-color: #4ade80 !important;
-  background: #1a2e1a !important;
+.text-section {
+  margin-bottom: 1.5rem;
 }
 
 .section-heading {
-  border-left: 4px solid #60a5fa;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 1rem;
+  margin-top: 2rem;
 }
 
 .section-bullet {
-  border-left: 4px solid #fbbf24;
+  margin-left: 1.5rem;
+  margin-bottom: 0.5rem;
 }
 
-.section-indicator {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  background: rgba(255, 255, 255, 0.05);
-  border-bottom: 1px solid #333;
-  font-size: 0.85rem;
-  color: #aaa;
+.word {
+  display: inline;
+  padding: 2px 1px;
+  margin: 0 2px;
+  transition: all 0.15s ease;
+  border-radius: 3px;
 }
 
-.section-type-icon {
-  font-size: 1rem;
+.word-hoverable {
+  cursor: pointer;
 }
 
-.section-content {
-  padding: 1rem;
-  flex: 1;
+.word-hoverable:hover {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
 }
 
-.section-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin: 0 0 0.5rem 0;
+.word-single {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.word-line-start {
+  font-weight: 500;
   color: #fff;
 }
 
-.section-text {
-  font-size: 0.95rem;
-  line-height: 1.5;
-  color: #ccc;
-  margin-bottom: 0.75rem;
-}
-
-.section-meta {
-  font-size: 0.8rem;
-  color: #666;
-}
-
-.section-action {
-  position: absolute;
-  top: 50%;
-  right: 1rem;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  opacity: 0;
-  transition: all 0.2s ease;
-  color: #4ade80;
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-
-.section {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
-
-.section:hover .section-action {
-  opacity: 1;
-}
-
-.start-arrow {
-  font-size: 1.2rem;
-  transition: transform 0.2s ease;
-}
-
-.section:hover .start-arrow {
-  transform: translateX(4px);
+.word-selected {
+  background: rgba(74, 222, 128, 0.3) !important;
+  color: #4ade80 !important;
+  font-weight: 600;
 }
 
 /* Loading and Error States */
@@ -503,7 +443,7 @@ function goBack() {
   padding: 1.5rem;
 }
 
-.selected-section-preview {
+.selected-word-preview {
   background: #1a1a1a;
   border: 1px solid #333;
   border-radius: 8px;
@@ -511,25 +451,19 @@ function goBack() {
   margin-bottom: 1rem;
 }
 
-.section-highlight {
+.word-highlight {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-.section-type {
-  font-size: 0.85rem;
-  color: #4ade80;
-  font-weight: 500;
-}
-
-.section-preview-text {
+.word-context {
   font-size: 0.95rem;
-  line-height: 1.4;
+  line-height: 1.6;
   color: #ccc;
 }
 
-.section-position {
+.word-position {
   font-size: 0.8rem;
   color: #666;
 }
@@ -597,18 +531,13 @@ function goBack() {
     padding: 0 1rem 1rem;
   }
   
-  .section-content {
-    padding: 0.75rem;
+  .document-text {
+    font-size: 1rem;
+    line-height: 1.6;
   }
   
-  .section-action {
-    position: static;
-    transform: none;
-    opacity: 1;
-    padding: 0.75rem 1rem;
-    border-top: 1px solid #333;
-    justify-content: center;
-    background: rgba(74, 222, 128, 0.1);
+  .word {
+    margin: 0 1px;
   }
   
   .modal-overlay {

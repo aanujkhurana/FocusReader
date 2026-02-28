@@ -20,6 +20,7 @@ const STORAGE_KEY = 'adhd-focus-reader-data'
 const DEFAULT_SETTINGS: UserSettings = {
   baseSpeed: 250, // words per minute
   summariesEnabled: false,
+  fontColor: '#ffffff', // white by default
   lastUsed: new Date()
 }
 

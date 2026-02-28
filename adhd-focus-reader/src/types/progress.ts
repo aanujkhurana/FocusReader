@@ -30,5 +30,6 @@ export interface LocalStorageData {
 export interface UserSettings {
   baseSpeed: number
   summariesEnabled: boolean
+  fontColor: string // hex color for text and ORP highlighting
   lastUsed: Date
 }

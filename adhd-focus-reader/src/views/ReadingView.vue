@@ -34,7 +34,7 @@
           aria-label="First reading word"
           :style="{
             backgroundColor: accessibilityColors.background,
-            color: accessibilityColors.text
+            color: '#ffffff'
           }"
         >
           <span class="word-text">
@@ -42,7 +42,7 @@
               v-for="(char, index) in currentWordChars" 
               :key="index"
               :class="{ 'orp-highlight': index === displayState.orp }"
-              :style="{ color: index === displayState.orp ? accessibilityColors.orp : accessibilityColors.text }"
+              :style="{ color: index === displayState.orp ? fontColor : '#ffffff' }"
             >
               {{ char }}
             </span>
@@ -66,7 +66,7 @@
         aria-label="Current reading word"
         :style="{
           backgroundColor: accessibilityColors.background,
-          color: accessibilityColors.text
+          color: '#ffffff'
         }"
       >
         <span class="word-text">
@@ -75,7 +75,7 @@
             v-for="(char, index) in currentWordChars" 
             :key="index"
             :class="{ 'orp-highlight': index === displayState.orp }"
-            :style="{ color: index === displayState.orp ? accessibilityColors.orp : accessibilityColors.text }"
+            :style="{ color: index === displayState.orp ? fontColor : '#ffffff' }"
           >
             {{ char }}
           </span>
@@ -89,7 +89,8 @@
         class="progress-bar"
         :style="{ 
           width: progressPercentage + '%',
-          backgroundColor: accessibilityColors.progress
+          backgroundColor: fontColor,
+          opacity: 0.25
         }"
         role="progressbar"
         :aria-valuenow="Math.round(progressPercentage)"
@@ -161,6 +162,30 @@
             <span class="speed-indicator">Fast</span>
           </div>
           <div class="speed-value">{{ currentSpeed }} WPM</div>
+        </div>
+
+        <!-- Font color adjustment -->
+        <div class="speed-control">
+          <label class="speed-label">Focus Color (ORP)</label>
+          <div class="pause-color-options">
+            <button
+              v-for="color in [
+                { name: 'Red', value: '#ff0000' },
+                { name: 'Yellow', value: '#ffff00' },
+                { name: 'Green', value: '#00ff00' },
+                { name: 'Blue', value: '#00bfff' }
+              ]"
+              :key="color.value"
+              @click="fontColor = color.value"
+              :class="['pause-color-button', { active: fontColor === color.value }]"
+              :style="{ 
+                backgroundColor: color.value,
+                opacity: fontColor === color.value ? 1 : 0.6
+              }"
+              :aria-label="`Select ${color.name} color`"
+            >
+            </button>
+          </div>
         </div>
 
         <div class="pause-controls">
@@ -237,6 +262,7 @@ const isReading = ref(false)
 const isPaused = ref(false)
 const showStartOverlay = ref(true) // Task 17: Show start overlay initially
 const currentSpeed = ref(250) // Current reading speed in WPM
+const fontColor = ref('#ff0000') // Focus/ORP color (default red)
 const readingSession = ref(createReadingSession())
 const accessibilityColors = ref(accessibilityService.getAccessibleColorScheme())
 
@@ -373,6 +399,15 @@ const startReading = async () => {
     const resumePosition = parseInt(route.query.position as string) || 0
     const customStart = route.query.customStart === 'true'
     const customStartPosition = parseInt(route.query.startPosition as string) || 0
+    
+    // Get font color from query or settings
+    const queryFontColor = route.query.fontColor as string
+    if (queryFontColor) {
+      fontColor.value = queryFontColor
+    } else {
+      const settings = progressManager.getSettings()
+      fontColor.value = settings.fontColor || '#ff0000'
+    }
 
     // Update current speed from setup configuration
     currentSpeed.value = baseSpeed
@@ -908,6 +943,32 @@ onUnmounted(() => {
   font-weight: 600;
   color: #ffffff;
   text-align: center;
+}
+
+.pause-color-options {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.pause-color-button {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.pause-color-button:hover {
+  transform: scale(1.1);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.pause-color-button.active {
+  border-color: rgba(255, 255, 255, 1);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3);
 }
 
 .pause-controls {
